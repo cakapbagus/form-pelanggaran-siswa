@@ -28,15 +28,15 @@ export async function POST(request: NextRequest) {
 
     // Parse tanggal
     const dateObj = new Date(tanggal);
-    const tanggalFormatted = `${dateObj.getDate()}/${dateObj.getMonth() + 1}/${dateObj.getFullYear()}`;
+    const tanggalFormatted = `${dateObj.getMonth() + 1}/${dateObj.getDate()}/${dateObj.getFullYear()}`;
 
     // Siapkan data untuk ditambahkan ke sheet
     const rows = siswaList.map((siswa: { nama: string; keterangan: string }) => [
       tanggalFormatted, // Tanggal
-      '', // Bulan (akan diisi dengan formula)
-      '', // Tahun (akan diisi dengan formula)
+      '=MONTH(INDIRECT("A"&ROW()))', // Bulan
+      '=YEAR(INDIRECT("A"&ROW()))', // Tahun
       siswa.nama, // Nama
-      '', // Kelas (akan diisi dengan formula)
+      '=VLOOKUP(INDIRECT("D"&ROW()),t_data_siswa[[Nama]:[Kelas]],2,FALSE)', // Kelas
       pelanggaran, // Pelanggaran
       siswa.keterangan || '', // Keterangan
     ]);
@@ -44,45 +44,12 @@ export async function POST(request: NextRequest) {
     // Tambahkan data ke sheet
     const response = await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: 'Sheet1!A:G', // Sesuaikan dengan nama sheet Anda
+      range: 'INPUT!A:G', // Sesuaikan dengan nama sheet Anda
       valueInputOption: 'USER_ENTERED',
       requestBody: {
         values: rows,
       },
     });
-
-    // Dapatkan range yang baru ditambahkan
-    const updatedRange = response.data.updates?.updatedRange;
-    
-    if (updatedRange) {
-      // Extract row numbers dari range (misal: Sheet1!A2:G4)
-      const match = updatedRange.match(/!A(\d+):G(\d+)/);
-      if (match) {
-        const startRow = parseInt(match[1]);
-        const endRow = parseInt(match[2]);
-        
-        // Buat array formula untuk setiap baris
-        const formulas = [];
-        for (let row = startRow; row <= endRow; row++) {
-          formulas.push([
-            `=MONTH(INDIRECT("A"&${row}))`, // Kolom B (Bulan)
-            `=YEAR(INDIRECT("A"&${row}))`, // Kolom C (Tahun)
-            '', // Kolom D (skip, ini Nama)
-            `=VLOOKUP(INDIRECT("D"&${row}),t_data_siswa[[Nama]:[Kelas]],2,FALSE)` // Kolom E (Kelas)
-          ]);
-        }
-
-        // Update kolom B, C, dan E dengan formula
-        await sheets.spreadsheets.values.update({
-          spreadsheetId,
-          range: `Sheet1!B${startRow}:E${endRow}`,
-          valueInputOption: 'USER_ENTERED',
-          requestBody: {
-            values: formulas.map(f => [f[0], f[1], '', f[3]]),
-          },
-        });
-      }
-    }
 
     return NextResponse.json({
       success: true,
